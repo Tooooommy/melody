@@ -21,12 +21,21 @@ func main() {
 		if err := session.Subscribe(ch); err != nil {
 			log.Println(err)
 		}
+		session.Set("channel", ch)
 	})
 
 	m.HandleMessage(func(session *melody.Session, msg []byte) {
-		if err := session.Publish(msg); err != nil {
-			log.Println(err)
+		channel, ok1 := session.Get("channel")
+		if ok1 {
+			_ = m.BroadcastFilter(msg, func(s *melody.Session) bool {
+				ch, ok2 := s.Get("channel")
+				if ok2 && ch.(string) == channel.(string) {
+					return true
+				}
+				return false
+			})
 		}
+
 	})
 
 	m.HandleSentMessage(func(session *melody.Session, bytes []byte) {

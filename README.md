@@ -22,6 +22,49 @@ your way so you can write real-time apps. Features include:
 go get gopkg.in/olahol/melody.v1
 ```
 
+
+## [Example: sub/pub](https://)
+
+```go
+package main
+
+import (
+	"log"
+	"melody"
+
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	m := melody.New()
+	router := gin.Default()
+	router.GET("/chat", func(context *gin.Context) {
+		if err := m.HandleRequest(context.Writer, context.Request); err != nil {
+			log.Println(err)
+		}
+	})
+
+	m.HandleConnect(func(session *melody.Session) {
+		ch := session.Request.URL.Query().Get("channel")
+		if err := session.Subscribe(ch); err != nil {
+			log.Println(err)
+		}
+	})
+
+	m.HandleMessage(func(session *melody.Session, msg []byte) {
+		if err := session.Publish(msg); err != nil {
+			log.Println(err)
+		}
+	})
+
+	m.HandleSentMessage(func(session *melody.Session, bytes []byte) {
+		log.Printf("%+v", session.Channel().Online())
+		log.Printf("%+v", string(bytes))
+	})
+	router.Run(":8080")
+}
+```
+
 ## [Example: chat](https://github.com/olahol/melody/tree/master/examples/chat)
 
 [![Chat](https://cdn.rawgit.com/olahol/melody/master/examples/chat/demo.gif "Demo")](https://github.com/olahol/melody/tree/master/examples/chat)
