@@ -12,8 +12,9 @@ type hub struct {
 	exit       chan *envelope
 	open       bool
 	rwmutex    *sync.RWMutex
+
 	// extends
-	channels    map[string]*Session
+	channels    map[string]*Channel
 	subscribe   chan *Session
 	publish     chan *envelope
 	unsubscribe chan *Session
@@ -29,7 +30,7 @@ func newHub() *hub {
 		open:       true,
 		rwmutex:    &sync.RWMutex{},
 		// extends
-		channels:    make(map[string]*Session),
+		channels:    make(map[string]*Channel),
 		subscribe:   make(chan *Session),
 		publish:     make(chan *envelope),
 		unsubscribe: make(chan *Session),
@@ -77,12 +78,17 @@ loop:
 			// extends
 			h.rwmutex.Lock()
 			if _, ok := h.channels[s.channel]; !ok {
-				h.channels[s.channel] = s
+				h.channels[s.channel] = &Channel{
+					session: s,
+					online:  1,
+					name:    s.channel,
+				}
 			} else {
-				h.channels[s.channel].prev = s // 原来的上一个指向现在的
-				s.next = h.channels[s.channel] // 现在的下一个是原来的
-				s.prev = nil                   // 成为队头
-				h.channels[s.channel] = s      // 现在的替代原来的位置
+				h.channels[s.channel].session.prev = s // 原来的上一个指向现在的
+				s.next = h.channels[s.channel].session // 现在的下一个是原来的
+				s.prev = nil                           // 成为队头
+				h.channels[s.channel].session = s      // 现在的替代原来的位置
+				h.channels[s.channel].online++         // 增加人数
 			}
 			h.rwmutex.Unlock()
 		case s := <-h.unsubscribe:
@@ -94,15 +100,16 @@ loop:
 				if s.prev != nil {
 					s.prev.next = s.next
 				} else {
-					h.channels[s.channel] = s.next
+					h.channels[s.channel].session = s.next
 				}
+				h.channels[s.channel].online--
 				s.channel = "" // 置空
 				h.rwmutex.Unlock()
 			}
 		case m := <-h.publish:
 			h.rwmutex.RLock()
 			if _, ok := h.channels[m.c]; ok {
-				for s := h.channels[m.c]; s != nil; s = s.next {
+				for s := h.channels[m.c].session; s != nil; s = s.next {
 					if m.filter != nil {
 						if m.filter(s) {
 							s.writeMessage(m)

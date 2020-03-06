@@ -293,6 +293,10 @@ func (s *Session) IsSubscribed() bool {
 	return s.channel != ""
 }
 
-func (s *Session) SubscribeName() string {
-	return s.channel
+func (s *Session) Channel() *Channel {
+	if c, ok := s.melody.hub.channels[s.channel]; ok {
+		return c
+	} else {
+		return nil
+	}
 }
