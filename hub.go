@@ -12,6 +12,11 @@ type hub struct {
 	exit       chan *envelope
 	open       bool
 	rwmutex    *sync.RWMutex
+	// extends
+	channels    map[string]*Session
+	subscribe   chan *Session
+	publish     chan *envelope
+	unsubscribe chan *Session
 }
 
 func newHub() *hub {
@@ -23,6 +28,11 @@ func newHub() *hub {
 		exit:       make(chan *envelope),
 		open:       true,
 		rwmutex:    &sync.RWMutex{},
+		// extends
+		channels:    make(map[string]*Session),
+		subscribe:   make(chan *Session),
+		publish:     make(chan *envelope),
+		unsubscribe: make(chan *Session),
 	}
 }
 
@@ -62,6 +72,47 @@ loop:
 			h.open = false
 			h.rwmutex.Unlock()
 			break loop
+
+		case s := <-h.subscribe:
+			// extends
+			h.rwmutex.Lock()
+			if _, ok := h.channels[s.channel]; !ok {
+				h.channels[s.channel] = s
+			} else {
+				h.channels[s.channel].prev = s // 原来的上一个指向现在的
+				s.next = h.channels[s.channel] // 现在的下一个是原来的
+				s.prev = nil                   // 成为队头
+				h.channels[s.channel] = s      // 现在的替代原来的位置
+			}
+			h.rwmutex.Unlock()
+		case s := <-h.unsubscribe:
+			if _, ok := h.channels[s.channel]; ok {
+				h.rwmutex.Lock()
+				if s.next != nil {
+					s.next.prev = s.prev
+				}
+				if s.prev != nil {
+					s.prev.next = s.next
+				} else {
+					h.channels[s.channel] = s.next
+				}
+				s.channel = "" // 置空
+				h.rwmutex.Unlock()
+			}
+		case m := <-h.publish:
+			h.rwmutex.RLock()
+			if _, ok := h.channels[m.c]; ok {
+				for s := h.channels[m.c]; s != nil; s = s.next {
+					if m.filter != nil {
+						if m.filter(s) {
+							s.writeMessage(m)
+						}
+					} else {
+						s.writeMessage(m)
+					}
+				}
+			}
+			h.rwmutex.RUnlock()
 		}
 	}
 }

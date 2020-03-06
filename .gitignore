@@ -3,3 +3,7 @@ benchmark
 *.swp
 coverage.out
 Makefile
+go.sum
+go.mod
+todo.md
+.idea

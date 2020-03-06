@@ -181,6 +181,10 @@ func (m *Melody) HandleRequestWithKeys(w http.ResponseWriter, r *http.Request, k
 		melody:  m,
 		open:    true,
 		rwmutex: &sync.RWMutex{},
+		// extends
+		next:    nil,
+		prev:    nil,
+		channel: "",
 	}
 
 	m.hub.register <- session
@@ -310,4 +314,57 @@ func (m *Melody) IsClosed() bool {
 // FormatCloseMessage formats closeCode and text as a WebSocket close message.
 func FormatCloseMessage(closeCode int, text string) []byte {
 	return websocket.FormatCloseMessage(closeCode, text)
+}
+
+// extends
+func (m *Melody) Subscribe(s *Session, c string) error {
+	if m.hub.closed() {
+		return errors.New("melody instance is already closed")
+	}
+	return s.Subscribe(c)
+}
+
+func (m *Melody) Unsubscribe(s *Session, c string) error {
+	if m.hub.closed() {
+		return errors.New("melody instance is already closed")
+	}
+	return s.Subscribe(c)
+}
+
+func (m *Melody) Publish(msg []byte, c string) error {
+	return m.PublishFilter(msg, c, nil)
+}
+
+func (m *Melody) PublishOthers(msg []byte, c string, s *Session) error {
+	return m.PublishFilter(msg, c, func(session *Session) bool {
+		return s != session
+	})
+}
+
+func (m *Melody) PublishFilter(msg []byte, c string, fn func(*Session) bool) error {
+	if m.hub.closed() {
+		return errors.New("melody instance is already closed")
+	}
+	message := &envelope{t: websocket.TextMessage, msg: msg, c: c, filter: fn}
+	m.hub.publish <- message
+	return nil
+}
+
+func (m *Melody) PublishBinary(msg []byte, c string) error {
+	return m.PublishBinaryFilter(msg, c, nil)
+}
+
+func (m *Melody) PublishBinaryOthers(msg []byte, c string, s *Session) error {
+	return m.PublishFilter(msg, c, func(session *Session) bool {
+		return s != session
+	})
+}
+
+func (m *Melody) PublishBinaryFilter(msg []byte, c string, fn func(*Session) bool) error {
+	if m.hub.closed() {
+		return errors.New("melody instance is already closed")
+	}
+	message := &envelope{t: websocket.BinaryMessage, msg: msg, c: c, filter: fn}
+	m.hub.publish <- message
+	return nil
 }

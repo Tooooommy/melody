@@ -18,6 +18,10 @@ type Session struct {
 	melody  *Melody
 	open    bool
 	rwmutex *sync.RWMutex
+	// extends
+	channel string
+	next    *Session
+	prev    *Session
 }
 
 func (s *Session) writeMessage(message *envelope) {
@@ -216,4 +220,79 @@ func (s *Session) MustGet(key string) interface{} {
 // IsClosed returns the status of the connection.
 func (s *Session) IsClosed() bool {
 	return s.closed()
+}
+
+// extends
+func (s *Session) Subscribe(c string) error {
+	//
+	if s.closed() {
+		return errors.New("tried to write to closed a session")
+	}
+
+	if s.channel != "" && s.channel != c { // 存在订阅 并与接下来的channel无法共存
+		return errors.New("session already subscribe channel")
+	} else {
+		s.channel = c
+		s.melody.hub.subscribe <- s
+	}
+	return nil
+}
+
+func (s *Session) Unsubscribe() error {
+	if s.closed() {
+		return errors.New("tried to write to closed a session")
+	}
+	if s.channel == "" {
+		return errors.New("session not yet subscribe channel")
+	} else {
+		s.melody.hub.unsubscribe <- s
+	}
+	return nil
+}
+
+func (s *Session) Publish(msg []byte) error {
+	return s.PublishFilter(msg, nil)
+}
+
+func (s *Session) PublishFilter(msg []byte, fn func(*Session) bool) error {
+	if s.melody.hub.closed() {
+		return errors.New("melody instance is closed")
+	}
+	message := &envelope{t: websocket.TextMessage, msg: msg, c: s.channel, filter: fn}
+	s.melody.hub.publish <- message
+	return nil
+}
+
+func (s *Session) PublishOthers(msg []byte) error {
+	return s.PublishFilter(msg, func(session *Session) bool {
+		return s != session
+	})
+}
+
+func (s *Session) PublishBinary(msg []byte) error {
+	return s.PublishBinaryFilter(msg, nil)
+}
+
+func (s *Session) PublishBinaryOthers(msg []byte) error {
+	return s.PublishBinaryFilter(msg, func(session *Session) bool {
+		return s != session
+	})
+}
+
+func (s *Session) PublishBinaryFilter(msg []byte, fn func(*Session) bool) error {
+	if s.melody.hub.closed() {
+		return errors.New("melody instance is closed")
+	}
+
+	message := &envelope{t: websocket.BinaryMessage, msg: msg, c: s.channel, filter: fn}
+	s.melody.hub.publish <- message
+	return nil
+}
+
+func (s *Session) IsSubscribed() bool {
+	return s.channel != ""
+}
+
+func (s *Session) SubscribeName() string {
+	return s.channel
 }
