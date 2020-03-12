@@ -317,6 +317,18 @@ func FormatCloseMessage(closeCode int, text string) []byte {
 }
 
 // extends
+
+func (m *Melody) Channels() map[string]*Channel {
+	return m.hub.channels
+}
+
+func (m *Melody)Channel(name string) *Channel {
+	if ch, ok := m.hub.channels[name]; ok {
+		return ch
+	}
+	return nil
+}
+
 func (m *Melody) Subscribe(s *Session, c string) error {
 	if m.hub.closed() {
 		return errors.New("melody instance is already closed")

@@ -35,7 +35,6 @@ func main() {
 				return false
 			})
 		}
-
 	})
 
 	m.HandleSentMessage(func(session *melody.Session, bytes []byte) {
